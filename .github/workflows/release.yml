@@ -226,12 +226,22 @@ jobs:
 
       - name: Determine tag version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            FULL_TAG="${{ github.event.inputs.tag_name }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            FULL_TAG="$DISPATCH_TAG"
           else
             FULL_TAG="${GITHUB_REF_NAME}"
           fi
+          case "$FULL_TAG" in
+            v*) ;;
+            *)
+              echo "ERROR: tag must start with v, got: $FULL_TAG" >&2
+              exit 1
+              ;;
+          esac
           TAG_VERSION="${FULL_TAG#v}"
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
           echo "full_tag=$FULL_TAG" >> "$GITHUB_OUTPUT"
@@ -258,9 +268,10 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          FULL_TAG: ${{ steps.version.outputs.full_tag }}
         run: |
           mapfile -t ASSETS < <(find build/release -type f \( -name 'ECOS-Studio_*.AppImage' -o -name 'ECOS-Studio_*.dmg' -o -name 'ECOS-Studio_*.exe' \) | sort)
-          gh release create "${{ steps.version.outputs.full_tag }}" \
-            --title "ECOS Studio ${{ steps.version.outputs.full_tag }}" \
+          gh release create "$FULL_TAG" \
+            --title "ECOS Studio $FULL_TAG" \
             --notes-file release-notes.md \
             "${ASSETS[@]}"
