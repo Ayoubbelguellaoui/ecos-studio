@@ -19,6 +19,7 @@ jobs:
   changes:
     name: Detect Changes
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     permissions:
       pull-requests: read
     outputs:
@@ -68,6 +69,7 @@ jobs:
   check-version:
     name: Check Version Consistency
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     needs: changes
     if: >-
       ${{
@@ -94,6 +96,7 @@ jobs:
   gui-checks:
     name: GUI Checks
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     needs: changes
     if: ${{ needs.changes.outputs.gui == 'true' || needs.changes.outputs.build == 'true' || needs.changes.outputs.ci == 'true' }}
     defaults:
@@ -124,6 +127,7 @@ jobs:
   chip-viewer-rust:
     name: Chip Viewer Rust Checks
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     needs: changes
     if: ${{ needs.changes.outputs.chip_viewer == 'true' || needs.changes.outputs.ci == 'true' }}
     defaults:
@@ -160,6 +164,7 @@ jobs:
         needs.chip-viewer-rust.result != 'failure'
       }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -245,6 +250,7 @@ jobs:
         needs.chip-viewer-rust.result != 'failure'
       }}
     runs-on: macos-14
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -307,6 +313,7 @@ jobs:
         needs.chip-viewer-rust.result != 'failure'
       }}
     runs-on: windows-2022
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4

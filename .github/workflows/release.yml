@@ -16,6 +16,7 @@ jobs:
   check-version:
     name: Check Version Consistency
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -36,6 +37,7 @@ jobs:
     name: Build Linux AppImage
     needs: check-version
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -108,6 +110,7 @@ jobs:
     name: Build macOS App
     needs: check-version
     runs-on: macos-14
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -159,6 +162,7 @@ jobs:
     name: Build Windows App
     needs: check-version
     runs-on: windows-2022
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -210,6 +214,7 @@ jobs:
     name: Create Release
     needs: [check-version, build, build-macos, build-windows]
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
