@@ -106,6 +106,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Linux GUI dependencies
+        uses: ./.github/actions/install-gui-linux-deps
+        with:
+          extra-packages: xvfb libasound2
+
       - name: Setup Node.js
         uses: ./.github/actions/setup-node-pnpm
 
@@ -123,6 +128,15 @@ jobs:
 
       - name: Run GUI tests
         run: pnpm run test
+
+      - name: Build Electron bundles
+        run: pnpm run desktop:build
+
+      - name: Run Electron smoke
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+          ECOS_ELECTRON_DISABLE_GPU: '1'
+        run: xvfb-run --auto-servernum pnpm run desktop:smoke
 
   chip-viewer-rust:
     name: Chip Viewer Rust Checks
