@@ -107,11 +107,12 @@ describe('afterPackLinuxSandbox', () => {
     ).rejects.toThrow('Packaged ECOS Agent validation failed')
   })
 
-  it('skips non-Linux targets', async () => {
+  it('skips the Linux sandbox wrapper on non-Linux targets', async () => {
     const appOutDir = await mkdtemp(join(tmpdir(), 'ecos-after-pack-'))
     tempDirs.push(appOutDir)
     const executablePath = join(appOutDir, 'ecos-studio')
     await writeFile(executablePath, 'binary-placeholder')
+    await writePackagedAgent(appOutDir)
 
     await afterPackLinuxSandbox({
       appOutDir,
@@ -124,6 +125,8 @@ describe('afterPackLinuxSandbox', () => {
       },
     })
 
+    // Agent validation runs on all platforms, but the sandbox wrapper
+    // is only applied on Linux. The binary must remain untouched.
     expect(await readFile(executablePath, 'utf8')).toBe('binary-placeholder')
   })
 })
