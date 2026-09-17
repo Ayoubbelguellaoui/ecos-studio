@@ -1,5 +1,8 @@
 import { spawn as spawnChild } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { platform } from 'node:os'
+import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type {
   DesktopAgentEventType,
@@ -253,12 +256,22 @@ export class AgentProviderProcessRuntime implements AgentProviderRuntime {
     })
   }
 
+  private resolveCommand(): string {
+    const { command } = this.manifest
+    if (platform() !== 'win32') return command
+    const resolved = join(this.manifest.pluginRoot, command)
+    if (existsSync(resolved)) return command
+    if (existsSync(`${resolved}.exe`)) return `${command}.exe`
+    return command
+  }
+
   private ensureChild(): ReturnType<SpawnLike> {
     if (this.child) return this.child
 
     this.stderrTail = ''
     this.stdoutBuffer = ''
-    const child = this.spawnImpl(this.manifest.command, this.manifest.args ?? [], {
+    const command = this.resolveCommand()
+    const child = this.spawnImpl(command, this.manifest.args ?? [], {
       cwd: this.manifest.pluginRoot,
       env: this.env,
       stdio: ['pipe', 'pipe', 'pipe'],
