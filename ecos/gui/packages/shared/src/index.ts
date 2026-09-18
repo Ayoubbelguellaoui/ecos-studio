@@ -144,6 +144,8 @@ export type {
   DesktopRtlSourceDialogOptions,
   PickedRtlSources,
   DesktopProjectDirectoryEntry,
+  DesktopProjectManagementWorkspaceImportFailureCode,
+  DesktopProjectManagementWorkspaceImportResult,
   DesktopProjectManagementWorkspaceStepConfigurationRequest,
   DesktopProjectManagementWorkspaceStepConfigurationResult,
   DesktopProjectTextFileChunk,
@@ -422,6 +424,7 @@ export type {
   ProjectManifestMutationResult,
   ProjectManifestReplacementBackupInput,
   ProjectManifestWorkspace,
+  ProjectManifestWorkspaceImportInput,
   ProjectManifestWorkspaceRegistrationInput,
   ProjectManifestWorkspaceStatus,
 } from './utils/projectManifest.ts'
