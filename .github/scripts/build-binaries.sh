@@ -12,7 +12,7 @@ build_chip_viewer() {
 }
 
 build_agent_provider() {
-  bash "$SCRIPT_FILE/build-agent.sh"
+  bash "$REPO_ROOT/.github/scripts/build-agent.sh"
 }
 
 validate_packaged_binaries() {

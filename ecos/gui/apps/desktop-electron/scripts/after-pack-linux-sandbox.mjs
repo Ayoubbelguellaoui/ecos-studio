@@ -31,8 +31,11 @@ exec "$BINARY" "$@"
 `
 }
 
-export async function validatePackagedAgent(appOutDir) {
-  const agentDirectory = join(appOutDir, 'resources', 'agent')
+export async function validatePackagedAgent(appOutDir, electronPlatformName, productFilename) {
+  const agentDirectory =
+    electronPlatformName === 'darwin'
+      ? join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources', 'agent')
+      : join(appOutDir, 'resources', 'agent')
   const isWindows = platform() === 'win32'
   const agentBinaryName = isWindows ? 'ecos-agent.exe' : 'ecos-agent'
   const agentPath = join(agentDirectory, agentBinaryName)
@@ -73,7 +76,8 @@ function resolveExecutableName(packager) {
 export default async function afterPackLinuxSandbox(context) {
   // ECC is deliberately not packaged (slim build): it is acquired from the
   // registry on first run, so only the bundled Agent is validated here.
-  await validatePackagedAgent(context.appOutDir)
+  const productFilename = context.packager.appInfo.productFilename
+  await validatePackagedAgent(context.appOutDir, context.electronPlatformName, productFilename)
 
   if (context.electronPlatformName !== 'linux') {
     return

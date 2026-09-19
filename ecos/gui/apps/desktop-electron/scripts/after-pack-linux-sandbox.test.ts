@@ -6,16 +6,16 @@ import afterPackLinuxSandbox from './after-pack-linux-sandbox.mjs'
 
 const tempDirs: string[] = []
 
-async function writePackagedAgent(appOutDir: string): Promise<void> {
-  const agentDir = join(appOutDir, 'resources', 'agent')
-  const agentPath = join(agentDir, 'ecos-agent')
-  await mkdir(agentDir, { recursive: true })
+async function writePackagedAgent(appOutDir: string, agentDir?: string): Promise<void> {
+  const dir = agentDir ?? join(appOutDir, 'resources', 'agent')
+  const agentPath = join(dir, 'ecos-agent')
+  await mkdir(dir, { recursive: true })
   await writeFile(
     agentPath,
     '#!/bin/sh\n[ "$1" = --version ] || exit 64\nprintf "ecos-agent 0.1.0\\n"\n',
   )
   await writeFile(
-    join(agentDir, 'agent-provider.json'),
+    join(dir, 'agent-provider.json'),
     JSON.stringify({
       command: './ecos-agent',
       protocolVersion: 1,
@@ -112,7 +112,16 @@ describe('afterPackLinuxSandbox', () => {
     tempDirs.push(appOutDir)
     const executablePath = join(appOutDir, 'ecos-studio')
     await writeFile(executablePath, 'binary-placeholder')
-    await writePackagedAgent(appOutDir)
+    // On macOS, agent lives inside the .app bundle at
+    // <appOutDir>/<productFilename>.app/Contents/Resources/agent/
+    const macAgentDir = join(
+      appOutDir,
+      'ecos-studio.app',
+      'Contents',
+      'Resources',
+      'agent',
+    )
+    await writePackagedAgent(appOutDir, macAgentDir)
 
     await afterPackLinuxSandbox({
       appOutDir,
