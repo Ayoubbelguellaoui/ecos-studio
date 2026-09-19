@@ -31,7 +31,11 @@ exec "$BINARY" "$@"
 `
 }
 
-export async function validatePackagedAgent(appOutDir, electronPlatformName, productFilename) {
+export async function validatePackagedAgent(
+  appOutDir,
+  electronPlatformName,
+  productFilename,
+) {
   const agentDirectory =
     electronPlatformName === 'darwin'
       ? join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources', 'agent')
@@ -77,7 +81,11 @@ export default async function afterPackLinuxSandbox(context) {
   // ECC is deliberately not packaged (slim build): it is acquired from the
   // registry on first run, so only the bundled Agent is validated here.
   const productFilename = context.packager.appInfo.productFilename
-  await validatePackagedAgent(context.appOutDir, context.electronPlatformName, productFilename)
+  await validatePackagedAgent(
+    context.appOutDir,
+    context.electronPlatformName,
+    productFilename,
+  )
 
   if (context.electronPlatformName !== 'linux') {
     return
