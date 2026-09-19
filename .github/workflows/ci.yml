@@ -293,18 +293,7 @@ jobs:
         run: cargo build --release -p chip-viewer-native
 
       - name: Build Agent
-        working-directory: ecos/agent
-        run: |
-          uv run --locked --with pyinstaller==6.17 pyinstaller \
-            --clean \
-            --noconfirm \
-            --onefile \
-            --name ecos-agent \
-            --distpath dist \
-            --specpath build \
-            --workpath build \
-            --add-data "knowledge:knowledge" \
-            packaging/run_ecos_agent.py
+        run: ./.github/scripts/build-agent.sh
 
       - name: Stage resources
         run: |
@@ -386,18 +375,7 @@ jobs:
 
       - name: Build Agent
         shell: bash
-        working-directory: ecos/agent
-        run: |
-          uv run --locked --with pyinstaller==6.17 pyinstaller \
-            --clean \
-            --noconfirm \
-            --onefile \
-            --name ecos-agent \
-            --distpath dist \
-            --specpath build \
-            --workpath build \
-            --add-data "knowledge;knowledge" \
-            packaging/run_ecos_agent.py
+        run: ./.github/scripts/build-agent.sh
 
       - name: Stage resources
         shell: bash
