@@ -134,6 +134,7 @@ export type {
   DesignRuntimeWorkspaceHandleRequest,
   DesignRuntimeWorkspaceInfoRequest,
   DesignRuntimeWorkspaceOpenRequest,
+  DesignRuntimeWorkspaceStepOutputsRequest,
 } from './contracts/designRuntime.ts'
 export type {
   DesktopApi,
@@ -144,6 +145,8 @@ export type {
   DesktopRtlSourceDialogOptions,
   PickedRtlSources,
   DesktopProjectDirectoryEntry,
+  DesktopProjectManagementWorkspaceImportFailureCode,
+  DesktopProjectManagementWorkspaceImportResult,
   DesktopProjectManagementWorkspaceStepConfigurationRequest,
   DesktopProjectManagementWorkspaceStepConfigurationResult,
   DesktopProjectTextFileChunk,
@@ -239,6 +242,9 @@ export type {
   EccWorkspaceStepConfigurationUpdateRequest,
   EccWorkspaceStepConfigurationReadRequest,
   EccWorkspaceStepConfigurationReadResult,
+  EccWorkspaceStepOutputArtifact,
+  EccWorkspaceStepOutputEntry,
+  EccWorkspaceStepOutputsResult,
   EccWorkspaceSpecValidationRequest,
   EccWorkspaceSpecValidationResult,
   EccWorkspaceUpdateRequest,
@@ -422,6 +428,7 @@ export type {
   ProjectManifestMutationResult,
   ProjectManifestReplacementBackupInput,
   ProjectManifestWorkspace,
+  ProjectManifestWorkspaceImportInput,
   ProjectManifestWorkspaceRegistrationInput,
   ProjectManifestWorkspaceStatus,
 } from './utils/projectManifest.ts'

@@ -23,6 +23,7 @@ import {
   type DesignRuntimeWorkspaceHandleRequest,
   type DesignRuntimeWorkspaceInfoRequest,
   type DesignRuntimeWorkspaceOpenRequest,
+  type DesignRuntimeWorkspaceStepOutputsRequest,
   type DesignTool,
   type DesktopDirectoryDialogOptions,
   type EccFlowRunRequest,
@@ -42,6 +43,7 @@ import {
   type EccWorkspaceOpenRequest,
   type EccWorkspaceOpenResult,
   type EccWorkspaceStepConfigurationReadResult,
+  type EccWorkspaceStepOutputsResult,
   type EccWorkspaceStepConfigurationUpdateRequest,
   type EccWorkspaceSpecValidationRequest,
   type EccWorkspaceUpdateRequest,
@@ -121,6 +123,7 @@ import {
   prepareWorkspaceOpenBinding,
 } from '../services/workspacePdkBindings'
 import { registerBackgroundLifecycleIpc } from './registerBackgroundLifecycleIpc'
+import { projectWorkspaceImportFailure } from '../services/projectWorkspaceImportService'
 
 export type IpcMainLike = Pick<IpcMain, 'handle'>
 
@@ -281,6 +284,14 @@ export interface DesktopBridgeServices {
         event: import('@ecos-studio/shared').BackendProjectExecutionInvalidatedEvent,
       ) => void,
     ): () => void
+  }
+  projectWorkspaceImportService?: {
+    importWorkspace(
+      projectRoot: string,
+      workspacePath: string,
+    ): Promise<
+      import('@ecos-studio/shared').DesktopProjectManagementWorkspaceImportResult
+    >
   }
   workspaceService: {
     approvePendingExternalReadRoots?(
@@ -459,6 +470,10 @@ export interface DesktopBridgeServices {
       directory: string,
       step: string,
     ): Promise<EccWorkspaceStepConfigurationReadResult>
+    workspaceStepOutputs(
+      directory: string,
+      step?: string,
+    ): Promise<EccWorkspaceStepOutputsResult>
     updateWorkspace(request: EccWorkspaceUpdateRequest): Promise<unknown>
     validateWorkspaceSpec(request: EccWorkspaceSpecValidationRequest): Promise<unknown>
     workspaceHome(request: EccWorkspaceHandleRequest): Promise<unknown>
@@ -1712,6 +1727,40 @@ export function registerIpc(
     },
   )
 
+  handle(
+    desktopApiIpcChannels.projectManagementImportWorkspace,
+    async (event, projectRoot) => {
+      if (!services.projectWorkspaceImportService) {
+        return {
+          status: 'failed',
+          code: 'project_invalid',
+          message: 'Project workspace import is unavailable.',
+        }
+      }
+      if (typeof projectRoot !== 'string' || !projectRoot.trim()) {
+        return {
+          status: 'failed',
+          code: 'project_invalid',
+          message: 'Project workspace import requires a project root.',
+        }
+      }
+      requireBackendMutationAllowed(event)
+      const workspacePath = await pickDirectory({ title: 'Select Workspace Folder' })
+      if (!workspacePath) return { status: 'cancelled' }
+      try {
+        const result = await services.projectWorkspaceImportService.importWorkspace(
+          projectRoot,
+          workspacePath,
+        )
+        invalidateBackendWorkspaceForSender(event.sender)
+        services.backendProjectComparisonService.invalidateProject(projectRoot)
+        return result
+      } catch (error) {
+        return projectWorkspaceImportFailure(error)
+      }
+    },
+  )
+
   handle(desktopApiIpcChannels.dialogPickDirectory, async (_event, options) => {
     return await pickDirectory(options as DesktopDirectoryDialogOptions | undefined)
   })
@@ -2454,6 +2503,24 @@ export function registerIpc(
         step: runtimeRequest.step,
         workspaceHandle: runtimeRequest.workspaceHandle,
       })
+    },
+  )
+
+  handle(
+    desktopApiIpcChannels.designRuntimeWorkspaceStepOutputs,
+    async (_event, request) => {
+      const runtimeRequest = request as DesignRuntimeWorkspaceStepOutputsRequest
+      if (requireDesignTool(runtimeRequest.designTool) !== 'backend') {
+        throw new Error('Workspace step outputs require the backend runtime.')
+      }
+      const directory = normalizeWorkspacePath(runtimeRequest.directory)
+      if (!directory) {
+        throw new Error('Workspace step outputs require a workspace directory.')
+      }
+      return await services.eccRuntimeService.workspaceStepOutputs(
+        directory,
+        runtimeRequest.step,
+      )
     },
   )
 

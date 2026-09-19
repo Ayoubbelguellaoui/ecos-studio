@@ -316,23 +316,38 @@
                           {{ selectedPopoverWorkspace.endStep }}</small
                         >
                       </header>
+                      <p
+                        v-if="popoverBranchRows.status === 'loading'"
+                        class="popover-step-empty"
+                      >
+                        Loading step outputs…
+                      </p>
+                      <p
+                        v-else-if="popoverBranchRows.status === 'error'"
+                        class="popover-step-empty"
+                      >
+                        Step outputs unavailable.
+                      </p>
+                      <p
+                        v-else-if="!popoverBranchRows.rows.length"
+                        class="popover-step-empty"
+                      >
+                        No committed flow steps.
+                      </p>
                       <button
-                        v-for="cell in workspaceConfiguredSteps(selectedPopoverWorkspace)"
-                        :key="`${selectedPopoverWorkspace.id}-${cell.step}`"
+                        v-for="row in popoverBranchRows.rows"
+                        :key="`${selectedPopoverWorkspace.id}-${row.step}`"
                         type="button"
                         class="popover-step-row"
-                        :disabled="!cell.canCreateWorkspace"
+                        :disabled="!row.canCreateWorkspace"
                         @click.stop="
-                          cell.canCreateWorkspace &&
-                          startWorkspaceFromPopoverStep(
-                            selectedPopoverWorkspace.id,
-                            cell.step,
-                          )
+                          row.canCreateWorkspace &&
+                          startWorkspaceFromPopoverStep(selectedPopoverWorkspace.id, row)
                         "
                       >
-                        <span>{{ cell.step }}</span>
-                        <em :class="stepStatusClass(cell.status)">{{ cell.label }}</em>
-                        <span v-if="cell.canCreateWorkspace" class="popover-step-add">
+                        <span>{{ row.step }}</span>
+                        <em :class="stepStatusClass(row.status)">{{ row.label }}</em>
+                        <span v-if="row.canCreateWorkspace" class="popover-step-add">
                           <i class="ri-add-line"></i>
                         </span>
                       </button>
@@ -698,10 +713,18 @@
           checked by default.
         </p>
         <label class="workspace-delete-option">
-          <input v-model="keepWorkspaceDataOnDelete" type="checkbox" />
+          <input
+            v-model="keepWorkspaceDataOnDelete"
+            type="checkbox"
+            :disabled="pendingDeleteWorkspaceIsExternal"
+          />
           <span>
             <strong>Keep workspace data</strong>
-            <small v-if="keepWorkspaceDataOnDelete">
+            <small v-if="pendingDeleteWorkspaceIsExternal">
+              External workspace data cannot be deleted from Project Management. The
+              manifest entry only will be removed.
+            </small>
+            <small v-else-if="keepWorkspaceDataOnDelete">
               Workspace folder will remain at
               {{ pendingDeleteWorkspace?.workspacePath || '-' }}.
             </small>
@@ -807,16 +830,21 @@ import { mapWithConcurrency } from './project-management/asyncConcurrency'
 import { getDesktopApi } from '@/platform/desktop'
 import { listResourcesApi, readMpcSpecApi } from '@/api/plugin'
 import { mutateProjectManifest } from '@/api/projectManifest'
-import { type ProjectManifest, type ProjectManifestMpc } from '@ecos-studio/shared'
+import { readWorkspaceStepOutputsApi } from '@/api/workspace'
+import { FLOW_START_DISABLED_STEPS } from '@/api/type'
 import {
-  FLOW_STEPS,
+  type EccWorkspaceStepOutputsResult,
+  type ProjectManifest,
+  type ProjectManifestMpc,
+} from '@ecos-studio/shared'
+import {
   buildProjectManagementProject,
   createWorkspaceBranchDraft,
+  isCompletedStepStatus,
   type ProjectManifestMpcCandidate,
   projectMpcOptionFromResource,
   resolveProjectSelectionUpdate,
   nextWorkspaceId,
-  type FlowStep,
   type ProjectFlowStatusHint,
   type ProjectManagementProject,
   type ProjectStepStatus,
@@ -835,6 +863,7 @@ import {
   type MpcSpecDesign,
 } from '@/utils/mpcSpec'
 import {
+  importProjectManagementWorkspace,
   listProjectManagementEntries,
   readProjectManagementManifest,
 } from '@/utils/projectManagementRead'
@@ -873,6 +902,8 @@ const selectedAnalysisTab = ref<'dashboard' | 'step'>('dashboard')
 const hasOpenedStepAnalysis = ref(false)
 const branchDraft = ref<BranchDraft | null>(null)
 const popoverWorkspaceId = ref('')
+const workspaceStepOutputs = ref<Record<string, EccWorkspaceStepOutputsResult>>({})
+const workspaceStepOutputsFailed = ref<Record<string, boolean>>({})
 const workspacePopoverStyle = ref<Record<string, string>>({})
 const projectActionMenuId = ref<string | null>(null)
 const workspaceActionMenuId = ref<string | null>(null)
@@ -1095,11 +1126,101 @@ const selectedPopoverWorkspace = computed<ProjectWorkspace | null>(() => {
     ) ?? null
   )
 })
+
+interface PopoverBranchRow {
+  step: string
+  nextStep: string
+  status: ProjectStepStatus
+  label: string
+  canCreateWorkspace: boolean
+  verilogPath: string | null
+  defPath: string | null
+}
+
+function branchStepStatus(state: string): ProjectStepStatus {
+  switch (state.trim().toLowerCase()) {
+    case 'success':
+      return 'success'
+    case 'warning':
+      return 'warning'
+    case 'reused':
+      return 'reused'
+    case 'skipped':
+      return 'skipped'
+    case 'ongoing':
+    case 'running':
+      return 'running'
+    case 'failed':
+    case 'invalid':
+    case 'incomplete':
+      return 'failed'
+    default:
+      return 'unstart'
+  }
+}
+
+function branchStepLabel(status: ProjectStepStatus): string {
+  const map: Record<ProjectStepStatus, string> = {
+    success: 'S',
+    warning: 'W',
+    reused: 'R',
+    skipped: '-',
+    unstart: 'U',
+    running: '...',
+    failed: '!',
+  }
+  return map[status]
+}
+
+const popoverBranchRows = computed<{
+  status: 'loading' | 'error' | 'ready'
+  rows: PopoverBranchRow[]
+}>(() => {
+  const workspace = selectedPopoverWorkspace.value
+  if (!workspace) return { status: 'ready', rows: [] }
+  if (workspaceStepOutputsFailed.value[workspace.id]) {
+    return { status: 'error', rows: [] }
+  }
+  const result = workspaceStepOutputs.value[workspace.id]
+  if (!result) return { status: 'loading', rows: [] }
+  return {
+    status: 'ready',
+    rows: result.steps.map((entry, index) => {
+      const status = branchStepStatus(entry.state)
+      const verilogPath = entry.verilog?.exists ? entry.verilog.path : null
+      const defPath = entry.def?.exists ? entry.def.path : null
+      const nextStep =
+        result.steps
+          .slice(index + 1)
+          .find((candidate) => !FLOW_START_DISABLED_STEPS.has(candidate.step))?.step ??
+        entry.step
+      return {
+        step: entry.step,
+        nextStep,
+        status,
+        label: branchStepLabel(status),
+        canCreateWorkspace: isCompletedStepStatus(status) && Boolean(verilogPath),
+        verilogPath,
+        defPath,
+      }
+    }),
+  }
+})
 const pendingDeleteWorkspace = computed<ProjectWorkspace | null>(() => {
   return (
     selectedProject.value.workspaces.find(
       (workspace) => workspace.id === pendingDeleteWorkspaceId.value,
     ) ?? null
+  )
+})
+const pendingDeleteWorkspaceIsExternal = computed(() => {
+  const workspacePath = normalizePath(pendingDeleteWorkspace.value?.workspacePath ?? '')
+  const projectRoot = normalizePath(selectedProject.value.path)
+  return Boolean(
+    workspacePath &&
+    projectRoot &&
+    workspacePath !== projectRoot &&
+    !workspacePath.startsWith(`${projectRoot}/`),
   )
 })
 
@@ -1353,15 +1474,27 @@ function toggleDialogMaximized() {
   isDialogMaximized.value = !isDialogMaximized.value
 }
 
-async function startWorkspaceFromCell(workspaceId: string, step: FlowStep) {
-  const targetWorkspaceId = await nextAvailableWorkspaceId(selectedProject.value)
-  if (!targetWorkspaceId) return
-  branchDraft.value = createWorkspaceBranchDraft(
-    selectedProject.value,
-    workspaceId,
-    step,
-    targetWorkspaceId,
+async function loadWorkspaceStepOutputs(workspaceId: string) {
+  if (
+    workspaceStepOutputs.value[workspaceId] ||
+    workspaceStepOutputsFailed.value[workspaceId]
+  ) {
+    return
+  }
+  const workspace = selectedProject.value.workspaces.find(
+    (candidate) => candidate.id === workspaceId,
   )
+  if (!workspace) return
+  try {
+    const result = await readWorkspaceStepOutputsApi(workspace.workspacePath)
+    workspaceStepOutputs.value = { ...workspaceStepOutputs.value, [workspaceId]: result }
+  } catch (error) {
+    console.warn('Failed to load workspace step outputs.', error)
+    workspaceStepOutputsFailed.value = {
+      ...workspaceStepOutputsFailed.value,
+      [workspaceId]: true,
+    }
+  }
 }
 
 function toggleWorkspaceFlowPopover(workspaceId: string) {
@@ -1369,6 +1502,7 @@ function toggleWorkspaceFlowPopover(workspaceId: string) {
   branchDraft.value = null
   closeRowActionMenus()
   popoverWorkspaceId.value = popoverWorkspaceId.value === workspaceId ? '' : workspaceId
+  if (popoverWorkspaceId.value) void loadWorkspaceStepOutputs(workspaceId)
   void nextTick(updateWorkspaceFlowPopoverPosition)
 }
 
@@ -1495,21 +1629,23 @@ function handleWorkspacePopoverKeydown(event: KeyboardEvent) {
   if (projectActionMenuId.value || workspaceActionMenuId.value) closeRowActionMenus()
 }
 
-async function startWorkspaceFromPopoverStep(workspaceId: string, step: FlowStep) {
-  await startWorkspaceFromCell(workspaceId, step)
+async function startWorkspaceFromPopoverStep(workspaceId: string, row: PopoverBranchRow) {
+  const targetWorkspaceId = await nextAvailableWorkspaceId(selectedProject.value)
+  if (!targetWorkspaceId) return
+  const result = workspaceStepOutputs.value[workspaceId]
+  branchDraft.value = createWorkspaceBranchDraft(
+    selectedProject.value,
+    workspaceId,
+    {
+      step: row.step,
+      nextStep: row.nextStep,
+      verilogPath: row.verilogPath,
+      defPath: row.defPath,
+      sdcPath: result?.sdc?.exists ? result.sdc.path : null,
+    },
+    targetWorkspaceId,
+  )
   closeWorkspaceFlowPopover()
-}
-
-function workspaceConfiguredSteps(
-  workspace: ProjectWorkspace,
-): ProjectWorkspace['steps'] {
-  const startIndex = FLOW_STEPS.indexOf(workspace.startStep)
-  const endIndex = FLOW_STEPS.indexOf(workspace.endStep)
-  if (startIndex < 0 || endIndex < startIndex) return workspace.steps
-  return workspace.steps.filter((cell) => {
-    const stepIndex = FLOW_STEPS.indexOf(cell.step)
-    return stepIndex >= startIndex && stepIndex <= endIndex
-  })
 }
 
 function closeWorkspaceDraftDialog() {
@@ -1567,6 +1703,10 @@ async function openWorkspace(workspace: ProjectWorkspace) {
       lastOpened: new Date(),
     },
     {
+      projectContext: {
+        projectRoot: selectedProject.value.path,
+        projectName: selectedProject.value.name,
+      },
       shouldActivate: () =>
         normalizeProjectManagementLocation(route.fullPath) === originFullPath &&
         normalizePath(currentProject.value?.path ?? '') ===
@@ -1693,10 +1833,6 @@ async function importProject() {
       ...projectManifests.value,
       [project.path]: manifest,
     }
-    workspaceFlowStates.value = {
-      ...workspaceFlowStates.value,
-      [project.path]: {},
-    }
     const wasSelected = selectedProjectId.value === project.id
     selectedProjectId.value = project.id
     if (wasSelected) void loadSelectedProjectWorkspaceData()
@@ -1714,24 +1850,28 @@ async function importWorkspaceIntoProject(project: ProjectManagementProject) {
   closeRowActionMenus()
   if (!project.path) return
   try {
-    const desktopApi = getDesktopApi()
-    const directory = await desktopApi.dialog.pickDirectory({
-      title: 'Select Workspace Folder',
-    })
-    if (!directory) return
-
     const projectRoot = project.path
-
-    const updated = await mutateProjectManifest(projectRoot, {
-      type: 'register-workspace',
-      input: {
-        projectRoot,
-        projectName: project.name,
-        workspacePath: directory,
-      },
-    })
-    await applyProjectManifestForProject(updated, projectRoot)
+    const result = await importProjectManagementWorkspace(projectRoot)
+    if (result.status === 'cancelled') return
+    if (result.status === 'failed') {
+      throw new Error(`${result.code}: ${result.message}`)
+    }
+    await applyProjectManifestForProject(result.manifest, projectRoot)
     selectedProjectId.value = project.id
+    selectedWorkspaceId.value = result.workspaceId
+    showToast(
+      result.status === 'already_registered'
+        ? {
+            severity: 'info',
+            summary: 'Workspace already registered',
+            detail: `${result.workspaceId} is already part of this project.`,
+          }
+        : {
+            severity: 'success',
+            summary: 'Workspace imported',
+            detail: `${result.workspaceId} was imported into this project.`,
+          },
+    )
   } catch (error) {
     console.warn('Failed to import workspace into project.', error)
     showToast({
@@ -1782,7 +1922,8 @@ async function confirmDeleteWorkspace() {
   const workspaceId = pendingDeleteWorkspaceId.value
   deleteWorkspaceError.value = ''
   const deleted = await deleteWorkspace(workspaceId ?? undefined, {
-    keepWorkspaceData: keepWorkspaceDataOnDelete.value,
+    keepWorkspaceData:
+      pendingDeleteWorkspaceIsExternal.value || keepWorkspaceDataOnDelete.value,
   })
   if (deleted) closeDeleteWorkspaceDialog()
 }
@@ -2081,11 +2222,6 @@ async function applyProjectManifestForProject(
     ...projectManifests.value,
     [projectRoot]: manifest,
     [normalizedRoot]: manifest,
-  }
-  workspaceFlowStates.value = {
-    ...workspaceFlowStates.value,
-    [projectRoot]: {},
-    [normalizedRoot]: {},
   }
   projectHistory.value = await rememberProjectHistoryEntry(
     projectFromManifest(manifest, normalizedRoot),
