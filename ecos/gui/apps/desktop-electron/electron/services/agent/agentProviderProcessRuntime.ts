@@ -58,6 +58,7 @@ interface AgentProviderProtocolResponse {
 interface AgentProviderProcessRuntimeOptions {
   env?: NodeJS.ProcessEnv
   manifest: ResolvedAgentProviderManifest
+  platform?: NodeJS.Platform
   spawn?: SpawnLike
 }
 
@@ -94,6 +95,7 @@ export class AgentProviderProcessRuntime implements AgentProviderRuntime {
   >()
   private readonly workspaceRevisions = new Map<string, number>()
   private readonly spawnImpl: SpawnLike
+  private readonly runtimePlatform: NodeJS.Platform
   private child: ReturnType<SpawnLike> | null = null
   private stderrTail = ''
   private stdoutBuffer = ''
@@ -102,6 +104,7 @@ export class AgentProviderProcessRuntime implements AgentProviderRuntime {
     this.baseEnv = { ...(options.env ?? process.env) }
     this.env = { ...this.baseEnv, ...options.manifest.environment }
     this.manifest = options.manifest
+    this.runtimePlatform = options.platform ?? platform()
     this.spawnImpl = options.spawn ?? spawnChild
   }
 
@@ -258,7 +261,7 @@ export class AgentProviderProcessRuntime implements AgentProviderRuntime {
 
   private resolveCommand(): string {
     const { command } = this.manifest
-    if (platform() !== 'win32') return command
+    if (this.runtimePlatform !== 'win32') return command
     const resolved = join(this.manifest.pluginRoot, command)
     if (existsSync(resolved)) return command
     if (existsSync(`${resolved}.exe`)) return `${command}.exe`

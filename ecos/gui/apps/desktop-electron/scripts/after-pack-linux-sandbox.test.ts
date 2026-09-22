@@ -2,7 +2,9 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-import afterPackLinuxSandbox from './after-pack-linux-sandbox.mjs'
+import afterPackLinuxSandbox, {
+  packagedAgentBinaryName,
+} from './after-pack-linux-sandbox.mjs'
 
 const tempDirs: string[] = []
 
@@ -137,5 +139,11 @@ describe('afterPackLinuxSandbox', () => {
     // Agent validation runs on all platforms, but the sandbox wrapper
     // is only applied on Linux. The binary must remain untouched.
     expect(await readFile(executablePath, 'utf8')).toBe('binary-placeholder')
+  })
+
+  it('uses the target platform when resolving the packaged Agent binary', () => {
+    expect(packagedAgentBinaryName('win32')).toBe('ecos-agent.exe')
+    expect(packagedAgentBinaryName('darwin')).toBe('ecos-agent')
+    expect(packagedAgentBinaryName('linux')).toBe('ecos-agent')
   })
 })

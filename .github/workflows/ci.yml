@@ -58,6 +58,8 @@ jobs:
             build:
               - 'Makefile'
               - 'ecos/scripts/**'
+              - 'ecos/agent/**'
+              - '.github/scripts/**'
             ci:
               - '.github/workflows/**'
             docs_only:

@@ -1,6 +1,5 @@
 import { chmod, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
-import { platform } from 'node:os'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 
@@ -31,17 +30,21 @@ exec "$BINARY" "$@"
 `
 }
 
+export function packagedAgentBinaryName(electronPlatformName) {
+  return electronPlatformName === 'win32' ? 'ecos-agent.exe' : 'ecos-agent'
+}
+
 export async function validatePackagedAgent(
   appOutDir,
   electronPlatformName,
   productFilename,
 ) {
   const agentDirectory =
-    electronPlatformName === 'darwin'
+    electronPlatformName === 'darwin' || electronPlatformName === 'mas'
       ? join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources', 'agent')
       : join(appOutDir, 'resources', 'agent')
-  const isWindows = platform() === 'win32'
-  const agentBinaryName = isWindows ? 'ecos-agent.exe' : 'ecos-agent'
+  const isWindows = electronPlatformName === 'win32'
+  const agentBinaryName = packagedAgentBinaryName(electronPlatformName)
   const agentPath = join(agentDirectory, agentBinaryName)
   const manifestPath = join(agentDirectory, 'agent-provider.json')
   try {
